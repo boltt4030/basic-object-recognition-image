@@ -1,74 +1,97 @@
-var all_frames=[];
-const yolo = ml5.YOLO(modelLoaded,{ filterBoxesThreshold: 0.01, IOUThreshold: 0.01, classProbThreshold: 0.5 });
-function fromVideo(){
-    var video = document.createElement("video");
-    video.height=400;
-    video.width=video.height*1.774;
-    video.crossOrigin="Anonymous";
-    video.addEventListener('loadeddata', function() {
-        if (!isNaN(video.duration)) {
-            video.currentTime = 0;
-        }
-    }, false);
+var all_frames = [];
+var all_output = [];
+var video = document.createElement("video");
+video.height = 400;
+video.width = video.height * 1.774;
+video.crossOrigin = "Anonymous";
 
-    video.addEventListener('seeked', function() {
-        var canvas = document.createElement('canvas');
-        canvas.setAttribute('id', video.currentTime);
-        canvas.width = video.width;
-        canvas.height = video.height;
-        var context = canvas.getContext('2d');
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        all_frames.push(canvas);
-        if(video.currentTime<video.duration){
-            video.currentTime += 0.1;
-        }else{
-            startDetecting();
-        }
-    }, false);
+const yolo = ml5.YOLO(modelLoaded, {
+  filterBoxesThreshold: 0.01,
+  IOUThreshold: 0.01,
+  classProbThreshold: 0.5
+});
 
-    var playSelectedFile = function(event) {
-        var file = this.files[0];
-        var fileURL = URL.createObjectURL(file);
-        video.src = fileURL;
-        document.getElementById("frames").innerHTML='';
-    }
+function fromVideo() {
+  video.addEventListener('loadeddata', function () {
+    if (!isNaN(video.duration)) video.currentTime = 0;
+  });
 
-    var input = document.querySelector('input');
-    input.addEventListener('change', playSelectedFile, false);
+  video.addEventListener('seeked', function () {
+    captureFrame(video);
+  });
+
+  document.querySelector('input').addEventListener('change', function (event) {
+    let file = this.files[0];
+    video.src = URL.createObjectURL(file);
+    all_frames = [];
+    all_output = [];
+    document.getElementById("frames").innerHTML = '';
+  });
 }
+
+function captureFrame(video) {
+  let canvas = document.createElement('canvas');
+  canvas.width = video.width;
+  canvas.height = video.height;
+  let context = canvas.getContext('2d');
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  all_frames.push(canvas);
+
+  if (video.currentTime < video.duration) {
+    video.currentTime += 0.1;
+  } else {
+    startDetecting();
+  }
+}
+
 function modelLoaded() {
-  $('#ready_state').css('visibility','visible');
+  $('#ready_state').css('visibility', 'visible');
   console.log('Model Loaded!');
 }
-var i=0;
-var all_output=[];
-function startDetecting(){
-  yolo.detect(getImg(all_frames[i]),function(err, results){
-    var context = all_frames[i].getContext("2d");
-    for(var j=0; j<results.length; j++){
-      context.font = "13px Arial";
-      context.fillText(results[j].className +" ("+Math.round(results[j].classProb*100)+"%)", results[j].x*all_frames[i].width, results[j].y*all_frames[i].height-2);
-      context.rect(results[j].x*all_frames[i].width, results[j].y*all_frames[i].height, results[j].w*all_frames[i].width, results[j].h*all_frames[i].height);
-    }
-    context.stroke();
-    all_output.push(results);
-    $('#progress').css('width', i/(all_frames.length-1) * window.innerWidth +'px');
-    document.getElementById("frames").appendChild(all_frames[i]);
-    i++;
-    if(i<all_frames.length){
-      startDetecting(i);
-    }else{
+
+function startDetecting() {
+  let i = 0;
+
+  function processNextFrame() {
+    if (i >= all_frames.length) {
       console.log(all_output);
       $('#progress').css('width', '0px');
-    }    
+      return;
+    }
+
+    yolo.detect(getImg(all_frames[i]), function (err, results) {
+      if (!err) {
+        drawDetections(all_frames[i], results);
+        all_output.push(results);
+        $('#progress').css('width', (i / all_frames.length) * window.innerWidth + 'px');
+        document.getElementById("frames").appendChild(all_frames[i]);
+      }
+      i++;
+      requestAnimationFrame(processNextFrame); // Non-blocking execution
+    });
+  }
+
+  processNextFrame();
+}
+
+function drawDetections(canvas, results) {
+  let ctx = canvas.getContext("2d");
+  ctx.font = "13px Arial";
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 2;
+
+  results.forEach(obj => {
+    let x = obj.x * canvas.width;
+    let y = obj.y * canvas.height;
+    let w = obj.w * canvas.width;
+    let h = obj.h * canvas.height;
+
+    ctx.fillText(obj.className + " (" + Math.round(obj.classProb * 100) + "%)", x, y - 2);
+    ctx.strokeRect(x, y, w, h);
   });
 }
 
 function getImg(canvas) {
-  var image = new Image();
-  image.width=canvas.width;
-  image.height=canvas.height;
-	image.src = canvas.toDataURL("image/png");
-	return image;
+  return new Image(canvas.width, canvas.height).src = canvas.toDataURL("image/png");
 }
