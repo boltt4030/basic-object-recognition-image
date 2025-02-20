@@ -30,6 +30,9 @@
       border: none;
       cursor: pointer;
     }
+    .info {
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -41,6 +44,10 @@
   
   <button id="startDetection">Start Detection</button>
   <button id="stopDetection">Stop Detection</button>
+  <div class="info">
+    <p class="time">Processing time: 0ms</p>
+    <p class="objno">Objects detected: 0</p>
+  </div>
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/ml5/0.12.2/ml5.min.js"></script>
   <script>
@@ -49,27 +56,34 @@
     const ctx = canvas.getContext('2d');
     let detector;
     let isDetecting = false;
+    let time_start, time_end;
     
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => { video.srcObject = stream; });
     
-    ml5.objectDetector('cocossd').then(loadedDetector => {
+    ml5.YOLO(video).then(loadedDetector => {
       detector = loadedDetector;
     });
     
     function detect() {
       if (!isDetecting) return;
-      detector.detect(video).then(results => {
+      time_start = (new Date()).getTime();
+      detector.detect().then(results => {
+        time_end = (new Date()).getTime();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        document.querySelector('.time').textContent = `Processing time: ${time_end - time_start}ms`;
+        document.querySelector('.objno').textContent = `Objects detected: ${results.length}`;
+        
         results.forEach(obj => {
           ctx.beginPath();
-          ctx.rect(obj.x, obj.y, obj.width, obj.height);
+          ctx.rect(obj.x * canvas.width, obj.y * canvas.height, obj.width * canvas.width, obj.height * canvas.height);
           ctx.lineWidth = 2;
           ctx.strokeStyle = 'red';
           ctx.fillStyle = 'red';
           ctx.stroke();
-          ctx.fillText(`${obj.label} (${Math.round(obj.confidence * 100)}%)`, obj.x + 5, obj.y + 15);
+          ctx.fillText(`${obj.className} (${Math.round(obj.classProb * 100)}%)`, obj.x * canvas.width + 5, obj.y * canvas.height + 15);
         });
+        
         requestAnimationFrame(detect);
       });
     }
